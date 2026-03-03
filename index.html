@@ -167,10 +167,32 @@
     .negative { color: var(--red); }
     .neutral { color: var(--muted); }
 
-    .stats-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 1px; background: var(--border); border: 1px solid var(--border); margin-bottom: 40px; }
-    .stat-cell { background: var(--surface); padding: 16px 20px; }
-    .stat-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.12em; margin-bottom: 6px; }
-    .stat-value { font-size: 16px; font-family: var(--font-display); font-weight: 300; letter-spacing: -0.01em; }
+    /* Stats grid — two rows */
+    .stats-section { margin-bottom: 40px; }
+    .stats-group-label {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.14em;
+      color: var(--muted);
+      margin-bottom: 8px;
+      margin-top: 16px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .stats-group-label::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+    .stats-group-label:first-child { margin-top: 0; }
+
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+      gap: 1px;
+      background: var(--border);
+      border: 1px solid var(--border);
+    }
+    .stat-cell { background: var(--surface); padding: 14px 18px; }
+    .stat-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.12em; margin-bottom: 5px; }
+    .stat-value { font-size: 15px; font-family: var(--font-display); font-weight: 300; letter-spacing: -0.01em; }
 
     .section-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.14em; color: var(--muted); margin-bottom: 16px; display: flex; align-items: center; gap: 12px; }
     .section-label::after { content: ''; flex: 1; height: 1px; background: var(--border); }
@@ -186,12 +208,12 @@
     .rating-row:last-child { border-bottom: none; }
     .rating-firm { color: var(--text); font-size: 12px; }
     .rating-date { color: var(--muted); font-size: 11px; }
-    .rating-badge { font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; padding: 3px 8px; border: 1px solid; }
+    .rating-badge { font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; padding: 3px 8px; border: 1px solid; white-space: nowrap; }
     .rating-buy { border-color: var(--green); color: var(--green); }
     .rating-hold { border-color: #f0d060; color: #f0d060; }
     .rating-sell { border-color: var(--red); color: var(--red); }
     .rating-neutral { border-color: var(--muted); color: var(--muted); }
-    .rating-target { color: var(--muted); font-size: 11px; text-align: right; }
+    .rating-target { color: var(--muted); font-size: 11px; text-align: right; white-space: nowrap; }
 
     .summary-text { font-size: 13px; line-height: 1.75; color: #b8b4ac; }
 
@@ -259,11 +281,21 @@
         <div class="stock-change" id="stockChange"></div>
       </div>
     </div>
-    <div class="stats-grid fade-up-2" id="statsGrid"></div>
+
+    <div class="stats-section fade-up-2">
+      <div class="stats-group-label">Valuation & Earnings</div>
+      <div class="stats-grid" id="statsGrid1"></div>
+      <div class="stats-group-label" style="margin-top:16px">Fundamentals</div>
+      <div class="stats-grid" id="statsGrid2"></div>
+      <div class="stats-group-label" style="margin-top:16px">Trading</div>
+      <div class="stats-grid" id="statsGrid3"></div>
+    </div>
+
     <div class="chart-section fade-up-3">
       <div class="section-label">1-Year Price Chart</div>
-      <div class="chart-wrap"><canvas id="priceChart" height="200"></canvas></div>
+      <div class="chart-wrap"><canvas id="priceChart" height="220"></canvas></div>
     </div>
+
     <div class="two-col fade-up-4">
       <div class="card">
         <div class="section-label" style="margin-bottom:16px">Analyst Ratings</div>
@@ -292,12 +324,10 @@
   async function searchStock() {
     const ticker = document.getElementById('tickerInput').value.trim().toUpperCase();
     if (!ticker) return;
-
     showState('loading');
     document.getElementById('loadingTicker').textContent = ticker;
-    document.getElementById('loadingMsg').textContent = 'Fetching live data...';
+    document.getElementById('loadingMsg').textContent = 'Searching Yahoo Finance & Finviz...';
     document.getElementById('searchBtn').disabled = true;
-
     try {
       const stockData = await fetchStockData(ticker);
       renderApp(ticker, stockData);
@@ -314,30 +344,32 @@
   async function callClaude(prompt) {
     const body = {
       model: 'claude-sonnet-4-20250514',
-      max_tokens: 1000,
+      max_tokens: 1500,
       messages: [{ role: 'user', content: prompt }],
       tools: [{ type: 'web_search_20250305', name: 'web_search' }]
     };
-
     const res = await fetch(WORKER_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body)
     });
-
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
       throw new Error(err.error?.message || `Server error ${res.status}`);
     }
-
     const data = await res.json();
     return data.content.filter(b => b.type === 'text').map(b => b.text).join('\n');
   }
 
   async function fetchStockData(ticker) {
-    const prompt = `Search for current stock information for ticker symbol ${ticker}.
+    const today = new Date().toISOString().split('T')[0];
 
-Return ONLY a valid JSON object (no markdown, no backticks, no explanation) with exactly this structure:
+    const prompt = `Today is ${today}. Search Yahoo Finance and Finviz for the CURRENT live stock data for ticker ${ticker}.
+
+IMPORTANT: The current price must be the real-time or most recent trading price from today. Search specifically for "${ticker} stock price today" to get the accurate current price. Do NOT use yesterday's close if the market is open.
+
+Return ONLY a valid JSON object (no markdown, no backticks, no preamble) with this exact structure:
+
 {
   "ticker": "${ticker}",
   "companyName": "Full company name",
@@ -345,26 +377,43 @@ Return ONLY a valid JSON object (no markdown, no backticks, no explanation) with
   "currentPrice": 123.45,
   "priceChange": 1.23,
   "priceChangePct": 0.85,
+  "dayHigh": 125.00,
+  "dayLow": 121.00,
+
   "marketCap": "2.5T",
   "peRatio": 28.5,
+  "forwardPE": 24.1,
   "eps": 6.12,
+  "revenue": "513.6B",
+  "netIncome": "59.2B",
   "dividendYield": "0.5%",
+
   "52wHigh": 150.00,
   "52wLow": 100.00,
   "volume": "45.2M",
   "avgVolume": "55.1M",
-  "priceHistory": [120,122,118,125,130,128,135,132,138,140,136,142,145,141,148,150,147,152,155,150,158,162,160,157,163,168,165,170,167,172,175,170,168,173,178,175,180,177,182,185,180,187,190,185,192,195,190,198,200,195],
-  "analystRatings": [
-    {"firm": "Goldman Sachs", "rating": "Buy", "priceTarget": 210, "prevTarget": 190, "date": "2025-01-15"},
-    {"firm": "Morgan Stanley", "rating": "Overweight", "priceTarget": 205, "prevTarget": 185, "date": "2025-01-10"},
-    {"firm": "JPMorgan", "rating": "Neutral", "priceTarget": 180, "prevTarget": 175, "date": "2024-12-20"},
-    {"firm": "Barclays", "rating": "Hold", "priceTarget": 175, "prevTarget": 170, "date": "2024-12-15"},
-    {"firm": "Bank of America", "rating": "Buy", "priceTarget": 215, "prevTarget": 195, "date": "2024-12-10"}
+  "shortFloat": "1.2%",
+  "institutionalOwn": "74.5%",
+
+  "priceHistory": [
+    [timestamp_ms, price],
+    ...exactly 52 entries representing weekly closing prices for the past 52 weeks, oldest first...
   ],
-  "summary": "2-3 sentence summary of company current situation, recent news, and outlook."
+
+  "analystRatings": [
+    {"firm": "Goldman Sachs", "rating": "Buy", "priceTarget": 210, "prevTarget": 190, "date": "2026-02-15"},
+    {"firm": "Morgan Stanley", "rating": "Overweight", "priceTarget": 205, "prevTarget": 185, "date": "2026-02-10"},
+    {"firm": "JPMorgan", "rating": "Neutral", "priceTarget": 180, "prevTarget": 175, "date": "2026-01-20"},
+    {"firm": "Barclays", "rating": "Hold", "priceTarget": 175, "prevTarget": 170, "date": "2026-01-15"},
+    {"firm": "Bank of America", "rating": "Buy", "priceTarget": 215, "prevTarget": 195, "date": "2025-12-10"}
+  ],
+
+  "summary": "3-4 sentence summary covering current price action, recent news, analyst sentiment, and near-term outlook."
 }
 
-Use real live data from web search. For priceHistory, provide ~50 data points as approximate weekly closing prices over the past year, oldest first.`;
+For priceHistory: provide exactly 52 [timestamp_ms, price] pairs. Each timestamp should be the Unix epoch in milliseconds for a Monday approximately 1 week apart, spanning the past 52 weeks. Use realistic prices that reflect the actual 52-week range of the stock.
+
+Use only real data from web search. If a value is truly unavailable use null.`;
 
     const raw = await callClaude(prompt);
 
@@ -383,6 +432,11 @@ Use real live data from web search. For priceHistory, provide ~50 data points as
     return parsed;
   }
 
+  function fmt(val, prefix = '', suffix = '') {
+    if (val === null || val === undefined || val === '') return '—';
+    return prefix + val + suffix;
+  }
+
   function renderApp(ticker, data) {
     document.getElementById('displayTicker').textContent = data.ticker || ticker;
     document.getElementById('companyName').textContent = data.companyName || ticker;
@@ -395,26 +449,49 @@ Use real live data from web search. For priceHistory, provide ~50 data points as
 
     document.getElementById('stockPrice').textContent = '$' + price.toFixed(2);
     document.getElementById('stockChange').innerHTML =
-      `<span class="${isPos ? 'positive' : 'negative'}">${isPos ? '+' : ''}${change.toFixed(2)} (${isPos ? '+' : ''}${pct.toFixed(2)}%)</span>
-       <span class="neutral"> · Today</span>`;
+      `<span class="${isPos ? 'positive' : 'negative'}">${isPos ? '+' : ''}${change.toFixed(2)} (${isPos ? '+' : ''}${pct.toFixed(2)}%)</span>` +
+      (data.dayHigh && data.dayLow ? `<span class="neutral"> · H: $${data.dayHigh} / L: $${data.dayLow}</span>` : '') +
+      `<span class="neutral"> · Today</span>`;
 
-    const stats = [
-      { label: 'Market Cap', value: data.marketCap || '—' },
-      { label: 'P/E Ratio', value: data.peRatio || '—' },
-      { label: 'EPS', value: data.eps ? '$' + data.eps : '—' },
-      { label: 'Dividend Yield', value: data.dividendYield || '—' },
+    // Valuation & Earnings
+    const stats1 = [
+      { label: 'Market Cap', value: fmt(data.marketCap) },
+      { label: 'P/E Ratio (TTM)', value: fmt(data.peRatio) },
+      { label: 'Forward P/E', value: fmt(data.forwardPE) },
+      { label: 'EPS (TTM)', value: data.eps ? '$' + data.eps : '—' },
+      { label: 'Revenue', value: fmt(data.revenue) },
+      { label: 'Net Income', value: fmt(data.netIncome) },
+    ];
+
+    // Trading fundamentals
+    const stats2 = [
       { label: '52W High', value: data['52wHigh'] ? '$' + data['52wHigh'] : '—' },
       { label: '52W Low', value: data['52wLow'] ? '$' + data['52wLow'] : '—' },
-      { label: 'Volume', value: data.volume || '—' },
-      { label: 'Avg Volume', value: data.avgVolume || '—' },
+      { label: 'Dividend Yield', value: fmt(data.dividendYield) },
+      { label: 'Short Float', value: fmt(data.shortFloat) },
+      { label: 'Inst. Ownership', value: fmt(data.institutionalOwn) },
     ];
-    document.getElementById('statsGrid').innerHTML = stats.map(s =>
-      `<div class="stat-cell"><div class="stat-label">${s.label}</div><div class="stat-value">${s.value}</div></div>`
-    ).join('');
 
+    // Volume
+    const stats3 = [
+      { label: 'Volume', value: fmt(data.volume) },
+      { label: 'Avg Volume', value: fmt(data.avgVolume) },
+    ];
+
+    const renderGrid = (id, stats) => {
+      document.getElementById(id).innerHTML = stats.map(s =>
+        `<div class="stat-cell"><div class="stat-label">${s.label}</div><div class="stat-value">${s.value}</div></div>`
+      ).join('');
+    };
+    renderGrid('statsGrid1', stats1);
+    renderGrid('statsGrid2', stats2);
+    renderGrid('statsGrid3', stats3);
+
+    // Chart
     window._lastPriceHistory = data.priceHistory || [];
     drawChart(data.priceHistory || []);
 
+    // Analyst ratings
     const ratingsEl = document.getElementById('analystRatings');
     if (data.analystRatings && data.analystRatings.length) {
       ratingsEl.innerHTML = data.analystRatings.map(r => {
@@ -427,7 +504,7 @@ Use real live data from web search. For priceHistory, provide ~50 data points as
         return `<div class="rating-row">
           <div><div class="rating-firm">${r.firm}</div><div class="rating-date">${formatDate(r.date)}</div></div>
           <span class="rating-badge ${rClass}">${r.rating}</span>
-          <div class="rating-target">Target: ${targetHtml}</div>
+          <div class="rating-target">PT: ${targetHtml}</div>
         </div>`;
       }).join('');
     } else {
@@ -439,7 +516,7 @@ Use real live data from web search. For priceHistory, provide ~50 data points as
 
   function getRatingClass(rating) {
     const r = (rating || '').toLowerCase();
-    if (r.includes('buy') || r.includes('overweight') || r.includes('outperform')) return 'rating-buy';
+    if (r.includes('buy') || r.includes('overweight') || r.includes('outperform') || r.includes('strong buy')) return 'rating-buy';
     if (r.includes('sell') || r.includes('underweight') || r.includes('underperform')) return 'rating-sell';
     if (r.includes('hold') || r.includes('neutral') || r.includes('equal')) return 'rating-hold';
     return 'rating-neutral';
@@ -451,11 +528,11 @@ Use real live data from web search. For priceHistory, provide ~50 data points as
     catch { return dateStr; }
   }
 
-  function drawChart(prices) {
+  function drawChart(priceHistory) {
     const canvas = document.getElementById('priceChart');
     const dpr = window.devicePixelRatio || 1;
     const W = canvas.parentElement.clientWidth - 48;
-    const H = 200;
+    const H = 220;
     canvas.width = W * dpr;
     canvas.height = H * dpr;
     canvas.style.width = W + 'px';
@@ -463,57 +540,89 @@ Use real live data from web search. For priceHistory, provide ~50 data points as
     const ctx = canvas.getContext('2d');
     ctx.scale(dpr, dpr);
 
-    if (!prices || prices.length < 2) {
+    if (!priceHistory || priceHistory.length < 2) {
       ctx.fillStyle = '#444';
       ctx.font = '12px DM Mono, monospace';
       ctx.fillText('No price history available', 20, H / 2);
       return;
     }
 
-    const pad = { top: 16, right: 16, bottom: 36, left: 60 };
+    // Normalise: accept either [timestamp, price] pairs or plain numbers
+    let entries = priceHistory.map((item, i) => {
+      if (Array.isArray(item)) return { ts: item[0], price: parseFloat(item[1]) };
+      return { ts: i, price: parseFloat(item) };
+    }).filter(e => !isNaN(e.price));
+
+    if (entries.length < 2) return;
+
+    // Sort by timestamp
+    entries.sort((a, b) => a.ts - b.ts);
+
+    const prices = entries.map(e => e.price);
+    const timestamps = entries.map(e => e.ts);
+    const hasRealTimestamps = Array.isArray(priceHistory[0]);
+
+    const pad = { top: 16, right: 16, bottom: 40, left: 64 };
     const chartW = W - pad.left - pad.right;
     const chartH = H - pad.top - pad.bottom;
     const minP = Math.min(...prices), maxP = Math.max(...prices);
     const range = maxP - minP || 1;
     const isPositive = prices[prices.length - 1] >= prices[0];
     const lineColor = isPositive ? '#60f0a0' : '#f06060';
-    const fillColor = isPositive ? 'rgba(96,240,160,0.08)' : 'rgba(240,96,96,0.08)';
+    const fillColor = isPositive ? 'rgba(96,240,160,0.07)' : 'rgba(240,96,96,0.07)';
 
+    // Grid lines + Y labels
     ctx.strokeStyle = '#1e1e1e'; ctx.lineWidth = 1;
     for (let i = 0; i <= 4; i++) {
       const y = pad.top + (chartH / 4) * i;
       ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(pad.left + chartW, y); ctx.stroke();
+      const val = maxP - (range / 4) * i;
       ctx.fillStyle = '#555'; ctx.font = '10px DM Mono, monospace'; ctx.textAlign = 'right';
-      ctx.fillText('$' + (maxP - (range / 4) * i).toFixed(0), pad.left - 8, y + 4);
+      ctx.fillText('$' + val.toFixed(val >= 100 ? 0 : 2), pad.left - 8, y + 4);
     }
 
-    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-    const now = new Date();
+    // X axis labels — 5 evenly spaced real dates
     ctx.textAlign = 'center'; ctx.fillStyle = '#555'; ctx.font = '10px DM Mono, monospace';
-    for (let i = 0; i < 5; i++) {
-      const x = pad.left + (i / 4) * chartW;
-      const d = new Date(now); d.setMonth(d.getMonth() - Math.round((1 - i / 4) * 12));
-      ctx.fillText(months[d.getMonth()] + ' \'' + String(d.getFullYear()).slice(2), x, H - 8);
+    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const labelCount = 5;
+    for (let i = 0; i < labelCount; i++) {
+      const frac = i / (labelCount - 1);
+      const x = pad.left + frac * chartW;
+      let label;
+      if (hasRealTimestamps) {
+        const idx = Math.round(frac * (entries.length - 1));
+        const d = new Date(timestamps[idx]);
+        label = months[d.getMonth()] + ' \'' + String(d.getFullYear()).slice(2);
+      } else {
+        const now = new Date();
+        const d = new Date(now);
+        d.setMonth(d.getMonth() - Math.round((1 - frac) * 12));
+        label = months[d.getMonth()] + ' \'' + String(d.getFullYear()).slice(2);
+      }
+      ctx.fillText(label, x, H - 10);
     }
 
+    // Fill area
     ctx.beginPath();
-    prices.forEach((p, i) => {
-      const x = pad.left + (i / (prices.length - 1)) * chartW;
-      const y = pad.top + ((maxP - p) / range) * chartH;
+    entries.forEach((e, i) => {
+      const x = pad.left + (i / (entries.length - 1)) * chartW;
+      const y = pad.top + ((maxP - e.price) / range) * chartH;
       i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
     });
     ctx.lineTo(pad.left + chartW, pad.top + chartH);
     ctx.lineTo(pad.left, pad.top + chartH);
     ctx.closePath(); ctx.fillStyle = fillColor; ctx.fill();
 
+    // Line
     ctx.beginPath();
-    prices.forEach((p, i) => {
-      const x = pad.left + (i / (prices.length - 1)) * chartW;
-      const y = pad.top + ((maxP - p) / range) * chartH;
+    entries.forEach((e, i) => {
+      const x = pad.left + (i / (entries.length - 1)) * chartW;
+      const y = pad.top + ((maxP - e.price) / range) * chartH;
       i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
     });
     ctx.strokeStyle = lineColor; ctx.lineWidth = 1.5; ctx.lineJoin = 'round'; ctx.stroke();
 
+    // End dot
     const lastX = pad.left + chartW;
     const lastY = pad.top + ((maxP - prices[prices.length - 1]) / range) * chartH;
     ctx.beginPath(); ctx.arc(lastX, lastY, 4, 0, Math.PI * 2);
