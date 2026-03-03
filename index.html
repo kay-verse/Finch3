@@ -100,7 +100,7 @@ main{max-width:1100px;margin:0 auto;padding:40px 32px}
   <div id="loading">
     <div class="ltick" id="ltick"></div>
     <div class="lbw"><div class="lb"></div></div>
-    <div class="lm" id="lm">Searching Yahoo Finance &amp; Finviz...</div>
+    <div class="lm" id="lm">Fetching live data...</div>
   </div>
   <div id="errorMsg">
     <div class="et">Not found.</div>
@@ -171,8 +171,8 @@ function api(prompt){
     headers:{'Content-Type':'application/json'},
     body:JSON.stringify({
       model:'claude-sonnet-4-20250514',
-      max_tokens:2000,
-      system:'You are a JSON API. Output ONLY a JSON object. No text before {. No text after }. No markdown. No backticks. No explanation.',
+      max_tokens:2500,
+      system:'You are a financial data API. Respond with ONE JSON object only. No markdown, no backticks, no explanation. Start with { end with }. All numeric fields must contain real numbers from your search results, never placeholder zeros.',
       messages:[{role:'user',content:prompt}],
       tools:[{type:'web_search_20250305',name:'web_search'}]
     })
@@ -186,25 +186,30 @@ function api(prompt){
 }
 
 function parseJ(raw){
-  if(!raw)throw new Error('No response from server.');
+  if(!raw||!raw.trim())throw new Error('No response from server.');
   var s=raw.indexOf('{'),e=raw.lastIndexOf('}');
-  if(s===-1||e<=s)throw new Error('Invalid response format. Please try again.');
+  if(s===-1||e<=s)throw new Error('Invalid response. Please try again.');
   var chunk=raw.slice(s,e+1);
-  // fix trailing commas
   chunk=chunk.replace(/,(\s*[}\]])/g,'$1');
-  return JSON.parse(chunk);
+  try{return JSON.parse(chunk);}catch(ex){throw new Error('Could not parse response. Please try again.');}
 }
 
 function fetchStock(ticker){
   var d=new Date();
   var today=d.getFullYear()+'-'+(d.getMonth()<9?'0':'')+(d.getMonth()+1)+'-'+(d.getDate()<10?'0':'')+d.getDate();
-  var prompt=`Today is ${today}. Get current stock data for ${ticker}. Search: 1) ${ticker} stock price today 2) ${ticker} Yahoo Finance statistics 3) ${ticker} Finviz 4) ${ticker} analyst ratings 2026. Return ONLY a JSON object, no other text: {"ticker":"${ticker}","companyName":"","sector":"","currentPrice":0,"priceChange":0,"priceChangePct":0,"dayHigh":0,"dayLow":0,"marketCap":"","peRatio":0,"forwardPE":0,"eps":0,"revenue":"","netIncome":"","dividendYield":"","52wHigh":0,"52wLow":0,"volume":"","avgVolume":"","shortFloat":"","institutionalOwn":"","priceHistory":[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],"analystRatings":[{"firm":"","rating":"","priceTarget":0,"prevTarget":0,"date":""}],"summary":""}`;
+  var p1='Search "'+ticker+' stock price today '+today+'" and get: current price, day high, day low, price change, volume.';
+  var p2='Search "'+ticker+' Yahoo Finance statistics" and get: PE ratio TTM, forward PE, EPS TTM, market cap, annual revenue, net income, dividend yield, 52 week high, 52 week low, average volume.';
+  var p3='Search "'+ticker+' Finviz" and get: short float percentage, institutional ownership percentage.';
+  var p4='Search "'+ticker+' analyst price target 2025 2026" and get: 5 recent analyst ratings with firm names, buy/hold/sell rating, price target, previous price target, date.';
+  var p5='Search "'+ticker+' stock price history weekly 2024 2025 2026" and get: 52 weekly closing prices from oldest to newest.';
+  var schema='{"ticker":"'+ticker+'","companyName":"string","sector":"string","currentPrice":number,"priceChange":number,"priceChangePct":number,"dayHigh":number,"dayLow":number,"marketCap":"string","peRatio":number,"forwardPE":number,"eps":number,"revenue":"string","netIncome":"string","dividendYield":"string","52wHigh":number,"52wLow":number,"volume":"string","avgVolume":"string","shortFloat":"string","institutionalOwn":"string","priceHistory":[number x52],"analystRatings":[{"firm":"string","rating":"string","priceTarget":number,"prevTarget":number,"date":"YYYY-MM-DD"}],"summary":"string"}';
+  var prompt=p1+' '+p2+' '+p3+' '+p4+' '+p5+' Fill this JSON schema with all real values found. Return ONLY the JSON: '+schema;
   return api(prompt).then(parseJ);
 }
 
 function f(v,p,s){
   p=p||'';s=s||'';
-  if(v===null||v===undefined||v===''||v==='N/A'||v===0&&typeof v==='object')return '—';
+  if(v===null||v===undefined||v===''||v==='N/A')return '\u2014';
   return p+v+s;
 }
 
@@ -218,7 +223,7 @@ function render(ticker,data){
   var up=chg>=0;
   document.getElementById('sprice').textContent='$'+price.toFixed(2);
   var ch='<span class="'+(up?'pos':'neg')+'">'+(up?'+':'')+chg.toFixed(2)+' ('+(up?'+':'')+pct.toFixed(2)+'%)</span>';
-  if(data.dayHigh&&data.dayLow)ch+=' <span class="mut">· H $'+data.dayHigh+' / L $'+data.dayLow+'</span>';
+  if(data.dayHigh&&data.dayLow)ch+=' <span class="mut">\u00b7 H $'+data.dayHigh+' / L $'+data.dayLow+'</span>';
   document.getElementById('schange').innerHTML=ch;
 
   function grid(id,items){
@@ -230,13 +235,13 @@ function render(ticker,data){
     ['Market Cap',f(data.marketCap)],
     ['P/E (TTM)',f(data.peRatio)],
     ['Forward P/E',f(data.forwardPE)],
-    ['EPS (TTM)',data.eps?'$'+data.eps:'—'],
+    ['EPS (TTM)',data.eps?'$'+data.eps:'\u2014'],
     ['Revenue',f(data.revenue)],
     ['Net Income',f(data.netIncome)]
   ]);
   grid('g2',[
-    ['52W High',data['52wHigh']?'$'+data['52wHigh']:'—'],
-    ['52W Low',data['52wLow']?'$'+data['52wLow']:'—'],
+    ['52W High',data['52wHigh']?'$'+data['52wHigh']:'\u2014'],
+    ['52W Low',data['52wLow']?'$'+data['52wLow']:'\u2014'],
     ['Dividend Yield',f(data.dividendYield)],
     ['Short Float',f(data.shortFloat)],
     ['Inst. Own',f(data.institutionalOwn)]
@@ -253,10 +258,10 @@ function render(ticker,data){
   if(data.analystRatings&&data.analystRatings.length){
     re.innerHTML=data.analystRatings.map(function(r){
       var rc=ratingClass(r.rating);
-      var th='<span>'+(r.priceTarget?'$'+r.priceTarget:'—')+'</span>';
+      var th='<span>'+(r.priceTarget?'$'+r.priceTarget:'\u2014')+'</span>';
       if(r.prevTarget&&r.priceTarget){
-        if(r.priceTarget>r.prevTarget)th='<span class="pos">↑ $'+r.priceTarget+'</span>';
-        else if(r.priceTarget<r.prevTarget)th='<span class="neg">↓ $'+r.priceTarget+'</span>';
+        if(r.priceTarget>r.prevTarget)th='<span class="pos">\u2191 $'+r.priceTarget+'</span>';
+        else if(r.priceTarget<r.prevTarget)th='<span class="neg">\u2193 $'+r.priceTarget+'</span>';
       }
       return '<div class="rr"><div><div class="rf">'+r.firm+'</div><div class="rd">'+fmtDate(r.date)+'</div></div><span class="rb '+rc+'">'+r.rating+'</span><div class="rt">PT: '+th+'</div></div>';
     }).join('');
