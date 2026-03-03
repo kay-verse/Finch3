@@ -56,7 +56,7 @@ main{max-width:1100px;margin:0 auto;padding:40px 32px}
 .tc2{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-bottom:40px}
 @media(max-width:700px){.tc2{grid-template-columns:1fr}}
 .card{background:var(--surface);border:1px solid var(--border);padding:24px}
-.rr{display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border);gap:12px}
+.rr{display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border);gap:12px;min-height:44px}
 .rr:last-child{border-bottom:none}
 .rf{color:var(--text);font-size:12px}.rd{color:var(--muted);font-size:11px}
 .rb{font-size:10px;letter-spacing:.08em;text-transform:uppercase;padding:3px 8px;border:1px solid;white-space:nowrap}
@@ -141,8 +141,7 @@ main{max-width:1100px;margin:0 auto;padding:40px 32px}
       </div>
     </div>
   </div>
-</main>
-<script>
+
 var WU='https://shy-bush-502e.komsi-mba.workers.dev';
 
 function qs(t){document.getElementById('ti').value=t;go();}
@@ -171,8 +170,8 @@ function api(prompt){
     headers:{'Content-Type':'application/json'},
     body:JSON.stringify({
       model:'claude-sonnet-4-20250514',
-      max_tokens:2500,
-      system:'You are a financial data API. Respond with ONE JSON object only. No markdown, no backticks, no explanation. Start with { end with }. All numeric fields must contain real numbers from your search results, never placeholder zeros.',
+      max_tokens:3000,
+      system:'You are a financial data API. Output ONLY a single JSON object. No markdown, no backticks, no explanation, no text before or after. Start with { and end with }. All numeric fields must contain real searched values.',
       messages:[{role:'user',content:prompt}],
       tools:[{type:'web_search_20250305',name:'web_search'}]
     })
@@ -197,19 +196,23 @@ function parseJ(raw){
 function fetchStock(ticker){
   var d=new Date();
   var today=d.getFullYear()+'-'+(d.getMonth()<9?'0':'')+(d.getMonth()+1)+'-'+(d.getDate()<10?'0':'')+d.getDate();
-  var p1='Search "'+ticker+' stock price today '+today+'" and get: current price, day high, day low, price change, volume.';
-  var p2='Search "'+ticker+' Yahoo Finance statistics" and get: PE ratio TTM, forward PE, EPS TTM, market cap, annual revenue, net income, dividend yield, 52 week high, 52 week low, average volume.';
-  var p3='Search "'+ticker+' Finviz" and get: short float percentage, institutional ownership percentage.';
-  var p4='Search "'+ticker+' analyst price target 2025 2026" and get: 5 recent analyst ratings with firm names, buy/hold/sell rating, price target, previous price target, date.';
-  var p5='Search "'+ticker+' stock price history weekly 2024 2025 2026" and get: 52 weekly closing prices from oldest to newest.';
-  var schema='{"ticker":"'+ticker+'","companyName":"string","sector":"string","currentPrice":number,"priceChange":number,"priceChangePct":number,"dayHigh":number,"dayLow":number,"marketCap":"string","peRatio":number,"forwardPE":number,"eps":number,"revenue":"string","netIncome":"string","dividendYield":"string","52wHigh":number,"52wLow":number,"volume":"string","avgVolume":"string","shortFloat":"string","institutionalOwn":"string","priceHistory":[number x52],"analystRatings":[{"firm":"string","rating":"string","priceTarget":number,"prevTarget":number,"date":"YYYY-MM-DD"}],"summary":"string"}';
-  var prompt=p1+' '+p2+' '+p3+' '+p4+' '+p5+' Fill this JSON schema with all real values found. Return ONLY the JSON: '+schema;
+  var yr=new Date(d);yr.setFullYear(yr.getFullYear()-1);
+  var yearAgo=yr.getFullYear()+'-'+(yr.getMonth()<9?'0':'')+(yr.getMonth()+1)+'-01';
+
+  var p1='Search "'+ticker+' stock price today '+today+'" and return the exact real-time or most recent trading price, day change, day high, day low, and volume.';
+  var p2='Search "'+ticker+' Yahoo Finance statistics" and return market cap, P/E ratio TTM, forward P/E, EPS TTM, annual revenue, annual net income, dividend yield, 52-week high, 52-week low, average daily volume.';
+  var p3='Search "'+ticker+' short float finviz" and return the short float percentage and institutional ownership percentage.';
+  var p4='Search "'+ticker+' analyst rating price target 2026" and return 5 recent analyst entries with firm name, rating, price target, previous price target, date.';
+  var p5='Search "'+ticker+' weekly stock price history '+yearAgo+' to '+today+'" and return 52 real weekly closing prices from oldest to newest as plain numbers.';
+  var schema='{"ticker":"'+ticker+'","companyName":"STR","sector":"STR","currentPrice":NUM,"priceChange":NUM,"priceChangePct":NUM,"dayHigh":NUM,"dayLow":NUM,"marketCap":"STR","peRatio":NUM,"forwardPE":NUM,"eps":NUM,"revenue":"STR","netIncome":"STR","dividendYield":"STR","52wHigh":NUM,"52wLow":NUM,"volume":"STR","avgVolume":"STR","shortFloat":"STR","institutionalOwn":"STR","priceHistory":[NUM,NUM,NUM,NUM,NUM,NUM,NUM,NUM,NUM,NUM,NUM,NUM,NUM,NUM,NUM,NUM,NUM,NUM,NUM,NUM,NUM,NUM,NUM,NUM,NUM,NUM,NUM,NUM,NUM,NUM,NUM,NUM,NUM,NUM,NUM,NUM,NUM,NUM,NUM,NUM,NUM,NUM,NUM,NUM,NUM,NUM,NUM,NUM,NUM,NUM,NUM,NUM],"analystRatings":[{"firm":"STR","rating":"STR","priceTarget":NUM,"prevTarget":NUM,"date":"YYYY-MM-DD"}],"summary":"STR"}';
+  var prompt=p1+' '+p2+' '+p3+' '+p4+' '+p5+' Fill ALL fields with real values from searches. Return ONLY the JSON: '+schema;
+
   return api(prompt).then(parseJ);
 }
 
 function f(v,p,s){
   p=p||'';s=s||'';
-  if(v===null||v===undefined||v===''||v==='N/A')return '\u2014';
+  if(v===null||v===undefined||v===''||v==='N/A'||v==='—')return '—';
   return p+v+s;
 }
 
@@ -223,7 +226,7 @@ function render(ticker,data){
   var up=chg>=0;
   document.getElementById('sprice').textContent='$'+price.toFixed(2);
   var ch='<span class="'+(up?'pos':'neg')+'">'+(up?'+':'')+chg.toFixed(2)+' ('+(up?'+':'')+pct.toFixed(2)+'%)</span>';
-  if(data.dayHigh&&data.dayLow)ch+=' <span class="mut">\u00b7 H $'+data.dayHigh+' / L $'+data.dayLow+'</span>';
+  if(data.dayHigh&&data.dayLow)ch+=' <span class="mut">· H $'+data.dayHigh+' / L $'+data.dayLow+'</span>';
   document.getElementById('schange').innerHTML=ch;
 
   function grid(id,items){
@@ -235,13 +238,13 @@ function render(ticker,data){
     ['Market Cap',f(data.marketCap)],
     ['P/E (TTM)',f(data.peRatio)],
     ['Forward P/E',f(data.forwardPE)],
-    ['EPS (TTM)',data.eps?'$'+data.eps:'\u2014'],
+    ['EPS (TTM)',data.eps?'$'+data.eps:'—'],
     ['Revenue',f(data.revenue)],
     ['Net Income',f(data.netIncome)]
   ]);
   grid('g2',[
-    ['52W High',data['52wHigh']?'$'+data['52wHigh']:'\u2014'],
-    ['52W Low',data['52wLow']?'$'+data['52wLow']:'\u2014'],
+    ['52W High',data['52wHigh']?'$'+data['52wHigh']:'—'],
+    ['52W Low',data['52wLow']?'$'+data['52wLow']:'—'],
     ['Dividend Yield',f(data.dividendYield)],
     ['Short Float',f(data.shortFloat)],
     ['Inst. Own',f(data.institutionalOwn)]
@@ -258,12 +261,12 @@ function render(ticker,data){
   if(data.analystRatings&&data.analystRatings.length){
     re.innerHTML=data.analystRatings.map(function(r){
       var rc=ratingClass(r.rating);
-      var th='<span>'+(r.priceTarget?'$'+r.priceTarget:'\u2014')+'</span>';
+      var th='<span>'+(r.priceTarget?'$'+r.priceTarget:'—')+'</span>';
       if(r.prevTarget&&r.priceTarget){
-        if(r.priceTarget>r.prevTarget)th='<span class="pos">\u2191 $'+r.priceTarget+'</span>';
-        else if(r.priceTarget<r.prevTarget)th='<span class="neg">\u2193 $'+r.priceTarget+'</span>';
+        if(r.priceTarget>r.prevTarget)th='<span class="pos">↑ $'+r.priceTarget+'</span>';
+        else if(r.priceTarget<r.prevTarget)th='<span class="neg">↓ $'+r.priceTarget+'</span>';
       }
-      return '<div class="rr"><div><div class="rf">'+r.firm+'</div><div class="rd">'+fmtDate(r.date)+'</div></div><span class="rb '+rc+'">'+r.rating+'</span><div class="rt">PT: '+th+'</div></div>';
+      return '<div class="rr"><div style="flex:1"><div class="rf">'+r.firm+'</div><div class="rd">'+fmtDate(r.date)+'</div></div><span style="flex-shrink:0;align-self:center" class="rb '+rc+'">'+r.rating+'</span><div class="rt" style="flex-shrink:0;min-width:80px;text-align:right">PT: '+th+'</div></div>';
     }).join('');
   }else{
     re.innerHTML='<div style="color:var(--muted);font-size:12px;padding:12px 0">No analyst data available</div>';
